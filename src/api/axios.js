@@ -3,7 +3,7 @@ import axios from 'axios';
 // Creamos una instancia centralizada
 const api = axios.create({
     baseURL: 'https://api.gigafiber.mx/api',
-    // baseURL: 'http://192.168.0.104:8000/api', // La URL de tu API Laravel
+    // baseURL: 'http://192.168.0.103:8000/api', // La URL de tu API Laravel
     headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json'

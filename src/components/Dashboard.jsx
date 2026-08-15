@@ -111,8 +111,8 @@ export default function Dashboard() {
   const [showMap, setShowMap] = useState(false); // 👈 ESTADO PARA ABRIR/CERRAR EL MAPA
 
   // 👇 NUEVO: Estados para el modal de "Ver más tareas" en un día
-  const [dayModalTasks, setDayModalTasks] = useState(null);
-  const [dayModalDate, setDayModalDate] = useState("");
+  const [dayModalDateStr, setDayModalDateStr] = useState(null); // Guarda "YYYY-MM-DD"
+  const [dayModalTitle, setDayModalTitle] = useState("");       // Guarda "6 de Agosto"
 
   const uniqueTitles = [...new Set(tasks.map(t => t.title))].filter(Boolean);
 
@@ -517,9 +517,8 @@ export default function Dashboard() {
             {hiddenCount > 0 && (
               <div
                 onClick={() => {
-                  // 👇 FIX: Restauramos la función original que abre la lista del día 👇
-                  setDayModalDate(`${i} de ${mesesNombres[month]}`);
-                  setDayModalTasks(dayTasks); 
+                  setDayModalTitle(`${i} de ${mesesNombres[month]}`);
+                  setDayModalDateStr(dayString); // 👈 Pasamos el string para que escuche cambios en vivo
                 }}
                 style={{
                   fontSize: "11px", color: "#007bff", fontWeight: "bold",
@@ -917,18 +916,22 @@ export default function Dashboard() {
       </div>
 
       {/* 👇 NUEVO: MODAL PARA VER TODAS LAS TAREAS DE UN DÍA (SOLO ESCRITORIO) 👇 */}
-      {dayModalTasks && !isMobile && (
-        <div style={styles.modalOverlay} onClick={() => setDayModalTasks(null)}>
+      {dayModalDateStr && !isMobile && (
+        <div style={styles.modalOverlay} onClick={() => setDayModalDateStr(null)}>
           <div 
             style={{ ...styles.modalContent, maxWidth: "500px" }} 
-            onClick={(e) => e.stopPropagation()} // Evita que se cierre al dar clic adentro
+            onClick={(e) => e.stopPropagation()} 
           >
             <h3 style={{ marginTop: 0, color: "#333", borderBottom: "1px solid #eee", paddingBottom: "10px" }}>
-              📅 Operaciones del {dayModalDate}
+              📅 Operaciones del {dayModalTitle}
             </h3>
             
             <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "60vh", overflowY: "auto", padding: "10px 0" }}>
-              {dayModalTasks.map((task) => {
+              {/* 👇 LA MAGIA: Filtramos directo de la matriz principal para reflejar cambios automáticos */}
+              {filteredTasks
+                .filter((t) => t.date === dayModalDateStr)
+                .sort((a, b) => (a.time || "23:59").localeCompare(b.time || "23:59"))
+                .map((task) => {
                 const colabInfo = collaborators.find((c) => String(c.id) === String(task.user_id)) || { color: "#6c757d", name: "Desconocido" };
                 return (
                   <div
@@ -956,7 +959,7 @@ export default function Dashboard() {
             </div>
             
             <button
-              onClick={() => setDayModalTasks(null)}
+              onClick={() => setDayModalDateStr(null)}
               style={{ ...styles.btnSecondary, width: "100%", marginTop: "15px" }}
             >
               Cerrar Lista
@@ -1923,10 +1926,13 @@ export default function Dashboard() {
             {/* 👇 CONTENEDOR CON SCROLL PERFECTO 👇 */}
             <div style={{ flex: 1, overflowY: "auto", paddingRight: "5px", display: "flex", flexDirection: "column", gap: "10px" }}>
               {(() => {
+                const todayStr = new Date().toISOString().split("T")[0]; // Para comparar qué fechas ya pasaron
+
+                // 👇 ORDEN: De menor a mayor (viejas primero)
                 const rutinas = tasks.filter(t => 
                   t.recurrence && t.recurrence !== "none" && 
                   (t.title.toLowerCase().includes(recurringSearchTerm.toLowerCase()) || (t.description && t.description.toLowerCase().includes(recurringSearchTerm.toLowerCase())))
-                );
+                ).sort((a, b) => new Date(a.date) - new Date(b.date)); 
 
                 if (rutinas.length === 0) {
                   return <p style={{ textAlign: "center", color: "#999", padding: "20px" }}>No se encontraron rutinas activas.</p>;
@@ -1935,6 +1941,7 @@ export default function Dashboard() {
                 return rutinas.map(task => {
                   const isExpanded = expandedRecurringTaskId === task.id;
                   const colabInfo = collaborators.find(c => String(c.id) === String(task.user_id)) || { name: "Sin asignar" };
+                  const isPast = task.date < todayStr; // 👈 Comprueba si la fecha se quedó en el pasado
                   
                   let freqLabel = "Personalizada";
                   if (task.recurrence === "daily") freqLabel = "Todos los días";
@@ -1945,7 +1952,14 @@ export default function Dashboard() {
                   else if (typeof task.recurrence === 'string' && task.recurrence.includes("monthly_custom")) freqLabel = "Mensual (Fechas específicas)";
 
                   return (
-                    <div key={task.id} style={{ border: "1px solid #ddd", borderRadius: "6px", overflow: "hidden", backgroundColor: "#fff", flexShrink: 0 }}>
+                    <div key={task.id} style={{ 
+                      border: "1px solid #ddd", 
+                      borderRadius: "6px", 
+                      overflow: "hidden", 
+                      backgroundColor: "#fff", 
+                      flexShrink: 0,
+                      opacity: isPast ? 0.5 : 1 // 👈 MAGIA: Opaco si es pasado
+                    }}>
                       
                       {/* CABECERA DEL ACORDEÓN */}
                       <div 
@@ -1953,12 +1967,19 @@ export default function Dashboard() {
                         style={{ padding: "12px", backgroundColor: isExpanded ? "#f4f6f9" : "#fff", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", transition: "background 0.2s" }}
                       >
                         <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                          <strong style={{ color: "#333", fontSize: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
-                            <span style={{ fontSize: "14px", color: "#6c5ce7" }}>🔄</span> 
+                          <strong style={{ 
+                            color: "#333", 
+                            fontSize: "14px", 
+                            display: "flex", 
+                            alignItems: "center", 
+                            gap: "8px",
+                            textDecoration: isPast ? "line-through" : "none" // 👈 MAGIA: Subrayado/Tachado si es pasado
+                          }}>
+                            <span style={{ fontSize: "14px", color: "#6c5ce7", textDecoration: "none" }}>🔄</span> 
                             {task.title}
                           </strong>
                           <span style={{ fontSize: "12px", color: "#6c757d", marginLeft: "22px" }}>
-                            🗓️ Próxima: <span style={{ color: "#007bff", fontWeight: "bold" }}>{task.date}</span> | {freqLabel}
+                            🗓️ Próxima: <span style={{ color: isPast ? "#dc3545" : "#007bff", fontWeight: "bold" }}>{task.date}</span> | {freqLabel}
                           </span>
                         </div>
                         <span style={{ transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.3s", fontSize: "12px", color: "#666", paddingLeft: "10px" }}>
